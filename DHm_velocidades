@@ -1,0 +1,245 @@
+% Limpieza
+
+clc
+clear
+
+% Pedir valores de la tabla DHm
+
+while(true)
+    
+    joints = input("¿Cuantos joints rotatorios hay? ");
+    
+    if joints > 2
+        
+        break
+        
+    else   
+        
+        msgbox("Error: No se pueden poner menos de tres joints")
+        
+    end
+end
+
+
+% Pedir variables, alfa, a, d
+
+variables = strings(joints, 1);
+alfa = strings(joints, 1);
+a = strings(joints, 1);
+d = strings(joints, 1);
+
+% Solicitar valores de cada renglon de tabla
+
+for i = 1:joints
+    
+    variables(i) = "theta" + i;
+    variables_der(i) = "theta" + i + "_der";
+    alfa(i) = input("\nEscriba el 'alfa' en grados del joint " + i + ": ", "s");
+    a(i) = input("Escriba la 'a' del joint " + i + ": ", "s");
+    d(i) = input("Escriba la 'd' del joint " + i + ": ", "s");
+
+end
+
+% Formar matriz
+
+% Conversión a symbolic los vectores
+
+variablesSym = str2sym(variables);
+variables_der = str2sym(variables_der);
+alfaSym = str2sym(alfa); % Conversión a symbolic
+aSym = str2sym(a);
+dSym = str2sym(d);
+
+% Obtención matrices DHm joint to joint homogeneos
+
+for i = 1:joints
+    
+    % Cada articulación
+    
+    matrizSym = [cos(variablesSym(i)) -sin(variablesSym(i)) 0 aSym(i); sin(variablesSym(i))*(eval(cosd(alfaSym(i)))) cos(variablesSym(i))*(eval(cosd(alfaSym(i)))) eval(-sind(alfaSym(i))) eval(-sind(alfaSym(i)))*dSym(i); sin(variablesSym(i))*eval(sind(alfaSym(i))) cos(variablesSym(i))*eval(sind(alfaSym(i))) eval(cosd(alfaSym(i))) eval(cosd(alfaSym(i)))*dSym(i); 0 0 0 1];
+    matrices(:, :, i) = matrizSym;
+    
+    % Mostrar matrices joint to joint
+    
+    fprintf("\nMatriz %d%d: ", i-1, i)
+    matrices(:, :, i)
+
+end
+
+% Direct kinematics
+
+for i = 1:(joints - 1)
+    
+    if i == 1
+        
+        matrizFinal = simplify(matrices(:, :, i) * matrices(:, :, i+1));
+    
+    
+    elseif i > 1
+        
+        matrizFinal = simplify(matrizFinal * matrices(:, :, i+1));
+        
+        if i == (joints - 1)
+        
+            % Mostrar matriz completa de 0 a i
+        
+            fprintf("\nMatriz 0%d: ", i+1)
+            matrizFinal
+            
+        end
+    end
+end
+
+% Direct Kinematics eliminando la última articulación
+
+for i = 1:(joints - 1)
+    
+    % Matriz identidad en la última articulación para calculos de
+    % velocidad
+
+    for j = 1:3
+        
+        if j == 1
+            
+            matrices(j, 1, joints) = 1;
+            matrices(j, 2, joints) = 0;
+            matrices(j, 3, joints) = 0;
+            
+        elseif j == 2
+            
+            matrices(j, 1, joints) = 0;
+            matrices(j, 2, joints) = 1;
+            matrices(j, 3, joints) = 0;
+         
+        elseif j == 3
+            
+            matrices(j, 1, joints) = 0;
+            matrices(j, 2, joints) = 0;
+            matrices(j, 3, joints) = 1;
+                  
+        end
+    end
+    
+    if i == 1
+        
+        matrizFinal_sin_art = simplify(matrices(:, :, i) * matrices(:, :, i+1));
+        matrizFinal_sin_art = simplify(matrizFinal_sin_art);
+    
+    elseif i > 1
+        
+        matrizFinal_sin_art = simplify(matrizFinal_sin_art * matrices(:, :, i+1));
+        matrizFinal_sin_art = simplify(matrizFinal_sin_art);
+        
+        if i == (joints - 1)
+        
+            % Mostrar matriz completa de 0 a i
+        
+            
+            fprintf("\nMatriz 0%d considerando la última articulación como identidad para calculo de velocidades: ", joints)
+            matrizFinal_sin_art = simplify(matrizFinal_sin_art)
+            
+        end
+    end
+end
+
+% Matriz de rotación y vectores de posición
+% Todo se hace con la matriz sin la última articulación
+
+for i = 1:joints
+        
+    matrices_rotacion(1:3, 1:3, i) = matrices(1:3, 1:3, i);
+    vector_posicion(1:3, 1, i) = matrices(1:3, 4, i);
+    zetas(1:3, 1, i) = matrices(1:3, 3, i);
+    
+    % Mostrar matrices rotación (R)
+    
+    fprintf("\nMatriz de rotación R%d%d: ", i-1, i)
+    matrices_rotacion(:, :, i)
+    
+    % Mostrar vectores de posición (P)
+    
+    fprintf("\nVector de posición P%d%d: ", i-1, i)
+    vector_posicion(:, :, i)
+    
+    % Mostrar vectores de Z (Z)
+    
+    fprintf("\nVector Z%d%d: ", i, i)
+    zetas(:, :, i)
+
+     
+end
+
+
+% Vector del inicio al final
+
+% Mostrar vector Z0i (Z) i es el numero de joints
+fprintf("\nVector P0%d", joints)
+vector_pos_final = matrizFinal(1:3, 4)
+
+
+% Condiciones iniciales
+
+fprintf("Valores iniciales de velocidad angular y lineal: ");
+
+for i = 1:3
+    
+    vel_angulares(i, 1, 1) = input("\nDato " + i + " del vector angular inicial: ");
+    
+    if i == 3
+        
+        vel_angulares = sym(vel_angulares);
+        
+        for j = 1:3
+        
+            vel_lineal(j, 1, 1) = input("\nDato " + j + " del vector de vel. lineal inicial: ");
+            
+            if j == 3
+                
+                vel_lineal = sym(vel_lineal);
+                
+            end
+            
+        end
+    end
+end
+
+% Velocidad angular 0-0
+            
+fprintf("La velocidad angular %dW%d es: ", 0, 0);
+vel_angulares(:, 1, 1)
+
+% Velocidad lineal 0-0
+
+fprintf("La velocidad lineal %dV%d es: ", 0, 0);
+vel_lineal(:, 1, 1)
+        
+
+% Operaciones para encontrar velocidades
+
+for i = 2:joints + 1
+        
+        % Velocidades angulares
+    
+        vel_angulares(:, 1, i) = (transpose(matrices_rotacion(:, :, i-1)) * vel_angulares(:, 1, i-1)) + (variables_der(i-1)*zetas(:, 1, i-1));
+        vel_angulares(:, 1, i) = simplify(vel_angulares(:, :, i));
+        
+        % Velocidad lineal
+        
+        vel_lineal(:, 1, i) = (transpose(matrices_rotacion(:, :, i-1))) * (vel_lineal(:, 1, i-1) + (cross(vel_angulares(:, 1, i-1), vector_posicion(:, 1, i-1))));
+        vel_lineal(:, 1, i) = simplify(vel_lineal(:, :, i));
+    
+        % Mostrar velocidades
+        
+        % Velocidad angular i-1 : i-1
+        
+        fprintf("\nLa velocidad angular %dW%d es: ", i-1, i-1);
+        vel_angulares(:, 1, i)
+        
+        
+        % Velocidad lineal i-1 : i-1
+        
+        fprintf("La velocidad lineal %dV%d es: ", i-1, i-1);
+        vel_lineal(:, :, i)
+        
+        
+end
